@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>香港個人收支記帳與預算管理系統 | HK Budget Master</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Vue 3 CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- SheetJS CDN for Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+            /* Prevent unwanted bounce/overflow on mobile browsers */
+            overscroll-behavior-y: none;
+        }
+        /* Custom scrollbar for transaction lists */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(156, 163, 175, 0.5);
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(107, 114, 128, 0.8);
+        }
+        [v-cloak] { display: none; }
+        
+        /* Mobile safe area padding for bottom bar */
+        .pb-safe {
+            padding-bottom: env(safe-area-inset-bottom, 16px);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+    <div id="app" v-cloak class="min-h-screen flex flex-col">
+        
+        <!-- Top Navigation Header -->
+        <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    <!-- Logo & Editable Title -->
+                    <div class="flex items-center space-x-2.5 sm:space-x-3">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-sky-500/20">
+                            <i class="fa-solid font-bold text-base sm:text-lg fa-sack-dollar"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <template v-if="!isEditingAppName">
+                                    <h1 @click="startEditingAppName()" class="font-bold text-base sm:text-xl text-slate-900 dark:text-white leading-tight cursor-pointer hover:text-sky-600 dark:hover:text-sky-400 transition flex items-center space-x-1.5 group" title="點擊自訂修改名稱">
+                                        <span class="truncate max-w-[140px] sm:max-w-none">{{ appName }}</span>
+                                        <i class="fa-solid fa-pen text-xs opacity-0 group-hover:opacity-100 text-slate-400 hover:text-sky-600 transition"></i>
+                                    </h1>
+                                </template>
+                                <template v-else>
+                                    <input ref="appNameInputRef" type="text" v-model="tempAppName" @blur="saveAppName()" @keydown.enter="saveAppName()" @keydown.esc="cancelEditingAppName()" class="font-bold text-sm sm:text-lg bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white border border-sky-500 rounded px-2 py-0.5 focus:outline-none max-w-[150px] sm:max-w-none">
+                                </template>
+                                <span class="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/60 text-sky-700 dark:text-sky-300 font-medium whitespace-nowrap">HKD</span>
+                            </div>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">香港本地化智能個人收支與預算管理</p>
+                        </div>
+                    </div>
+
+                    <!-- Header Right Tools -->
+                    <div class="flex items-center space-x-2 sm:space-x-4">
+                        <!-- Desktop Quick Add Button -->
+                        <button @click="openAddModal()" class="hidden sm:inline-flex items-center space-x-1.5 bg-sky-600 hover:bg-sky-700 text-white font-medium px-3.5 py-2 rounded-xl text-sm transition shadow-sm hover:shadow active:scale-95">
+                            <i class="fa-solid fa-plus text-xs"></i>
+                            <span>記一筆</span>
+                        </button>
+
+                        <!-- Dark Mode Switch -->
+                        <button @click="toggleDarkMode()" class="p-2 sm:p-2.5 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition" title="切換深色/淺色模式">
+                            <i class="fa-solid" :class="isDark ? 'fa-sun text-amber-400' : 'fa-moon text-slate-600'"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-5 sm:space-y-6 pb-24 sm:pb-8">
+            
+            <!-- Navigation Tabs (Desktop) & Month Selector -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-slate-200 dark:border-slate-700 pb-3 sm:pb-4">
+                <!-- Desktop Nav Tabs -->
+                <nav class="hidden sm:flex space-x-1 bg-slate-200/70 dark:bg-slate-800 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
+                    <button @click="currentTab = 'overview'" :class="currentTab === 'overview' ? 'bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'" class="px-4 py-2 rounded-lg text-sm transition flex items-center space-x-2 whitespace-nowrap">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>總覽概況</span>
+                    </button>
+                    <button @click="currentTab = 'transactions'" :class="currentTab === 'transactions' ? 'bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'" class="px-4 py-2 rounded-lg text-sm transition flex items-center space-x-2 whitespace-nowrap">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>交易明細</span>
+                    </button>
+                    <button @click="currentTab = 'budget'" :class="currentTab === 'budget' ? 'bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'" class="px-4 py-2 rounded-lg text-sm transition flex items-center space-x-2 whitespace-nowrap">
+                        <i class="fa-solid fa-bullseye"></i>
+                        <span>預算上限</span>
+                    </button>
+                    <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm font-semibold' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 font-medium'" class="px-4 py-2 rounded-lg text-sm transition flex items-center space-x-2 whitespace-nowrap">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>數據與備份</span>
+                    </button>
+                </nav>
+
+                <!-- Month Filter Selector (Optimized for Mobile Touch) -->
+                <div class="flex items-center justify-between sm:justify-end w-full sm:w-auto bg-white dark:bg-slate-800 sm:bg-transparent sm:dark:bg-transparent p-2 sm:p-0 rounded-xl border sm:border-0 border-slate-200 dark:border-slate-700 shadow-sm sm:shadow-none space-x-2">
+                    <div class="flex items-center space-x-1">
+                        <button @click="changeMonth(-1)" class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition active:scale-95" title="上個月">
+                            <i class="fa-solid fa-chevron-left text-xs"></i>
+                        </button>
+                        <div class="relative">
+                            <input type="month" v-model="selectedMonth" class="bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-sm font-bold rounded-lg px-2.5 py-1.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+                        <button @click="changeMonth(1)" class="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition active:scale-95" title="下個月">
+                            <i class="fa-solid fa-chevron-right text-xs"></i>
+                        </button>
+                    </div>
+                    <button @click="resetToCurrentMonth()" class="text-xs bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 text-sky-700 dark:text-sky-300 font-semibold px-3 py-1.5 rounded-lg transition border border-sky-200 dark:border-sky-800">
+                        本月
+                    </button>
+                </div>
+            </div>
+
+            <!-- TAB 1: OVERVIEW DASHBOARD -->
+            <div v-if="currentTab === 'overview'" class="space-y-6">
+                
+                <!-- Financial KPI Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <!-- Net Cashflow Card -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">本月結餘 (Net)</span>
+                            <div class="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                                <i class="fa-solid fa-wallet"></i>
+                            </div>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-extrabold" :class="monthlySummary.net >= 0 ? 'text-slate-900 dark:text-white' : 'text-rose-600 dark:text-rose-400'">
+                            {{ formatCurrency(monthlySummary.net) }}
+                        </div>
+                        <div class="mt-2 flex items-center text-xs text-slate-500 dark:text-slate-400 space-x-1">
+                            <span>儲蓄率：</span>
+                            <span class="font-bold" :class="monthlySummary.savingsRate >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'">
+                                {{ monthlySummary.savingsRate }}%
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Total Income Card -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">本月總收入 (Income)</span>
+                            <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                                <i class="fa-solid fa-arrow-down-left text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
+                            +{{ formatCurrency(monthlySummary.income) }}
+                        </div>
+                        <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            共 {{ monthlySummary.incomeCount }} 筆入賬
+                        </div>
+                    </div>
+
+                    <!-- Total Expense Card -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">本月總支出 (Expenses)</span>
+                            <div class="w-8 h-8 rounded-lg bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                                <i class="fa-solid fa-arrow-up-right text-xs"></i>
+                            </div>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-extrabold text-rose-600 dark:text-rose-400">
+                            -{{ formatCurrency(monthlySummary.expense) }}
+                        </div>
+                        <div class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                            日均支出: {{ formatCurrency(monthlySummary.dailyExpenseAvg) }}
+                        </div>
+                    </div>
+
+                    <!-- Budget Cap Status Card -->
+                    <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-700 shadow-sm">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">總預算使用率</span>
+                            <div class="flex items-center space-x-2">
+                                <button @click="openTotalBudgetEditModal()" class="text-xs text-sky-600 dark:text-sky-400 hover:underline flex items-center space-x-1 font-medium">
+                                    <i class="fa-solid fa-pen text-[10px]"></i>
+                                    <span>修改</span>
+                                </button>
+                                <div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                                    <i class="fa-solid fa-gauge-high"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-extrabold" :class="overallBudgetPercent > 100 ? 'text-rose-600' : 'text-slate-900 dark:text-white'">
+                            {{ overallBudgetPercent }}%
+                        </div>
+                        <div class="text-xs text-slate-500 dark:text-slate-400 mt-1 flex justify-between items-center">
+                            <span>上限：{{ formatCurrency(totalBudgetLimit) }}</span>
+                        </div>
+                        <!-- Progress bar -->
+                        <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full mt-3 overflow-hidden">
+                            <div class="h-full transition-all duration-500 rounded-full" 
+                                 :class="overallBudgetPercent > 100 ? 'bg-rose-500' : overallBudgetPercent > 80 ? 'bg-amber-500' : 'bg-sky-500'" 
+                                 :style="{ width: Math.min(overallBudgetPercent, 100) + '%' }">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    <!-- Category Expense Doughnut Chart -->
+                    <div class="lg:col-span-5 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex flex-col">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-chart-pie text-sky-500"></i>
+                                <span>支出類別佔比</span>
+                            </h3>
+                            <span class="text-xs text-slate-500">{{ selectedMonth }}</span>
+                        </div>
+                        <div class="flex-1 relative flex items-center justify-center min-h-[250px]">
+                            <canvas id="categoryChart"></canvas>
+                            <div v-if="categoryChartEmpty" class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">
+                                本月暫無支出紀錄
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Cash Flow Trend Line/Bar Chart -->
+                    <div class="lg:col-span-7 bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex flex-col">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-chart-line text-indigo-500"></i>
+                                <span>近半年收支趨勢 (HKD)</span>
+                            </h3>
+                            <span class="text-xs text-slate-500">半年歷史紀錄</span>
+                        </div>
+                        <div class="flex-1 min-h-[250px] relative">
+                            <canvas id="trendChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Transactions Quick Preview & HK Category Insights -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Recent Transactions list (2 Cols) -->
+                    <div class="lg:col-span-2 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-clock-rotate-left text-sky-500"></i>
+                                <span>近期最新交易</span>
+                            </h3>
+                            <button @click="currentTab = 'transactions'" class="text-xs text-sky-600 hover:text-sky-700 dark:text-sky-400 font-semibold flex items-center space-x-1">
+                                <span>查看全部 ({{ currentMonthTransactions.length }})</span>
+                                <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                            </button>
+                        </div>
+
+                        <div v-if="recentTransactions.length === 0" class="text-center py-12 text-slate-400 text-sm">
+                            <i class="fa-solid fa-receipt text-3xl mb-2 text-slate-300 dark:text-slate-600"></i>
+                            <p>本月尚未有任何紀錄，點擊右上角「記一筆」開始吧！</p>
+                        </div>
+
+                        <div v-else class="divide-y divide-slate-100 dark:divide-slate-700/60">
+                            <div v-for="t in recentTransactions" :key="t.id" class="py-3 flex items-center justify-between hover:bg-slate-50/80 dark:hover:bg-slate-700/30 px-2 rounded-xl transition">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-xl flex items-center justify-center text-slate-700 dark:text-slate-200" :class="getCategoryBg(t.category)">
+                                        <i :class="getCategoryIcon(t.category)" class="text-base"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium text-sm text-slate-900 dark:text-white flex items-center space-x-2">
+                                            <span>{{ t.category }}</span>
+                                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{{ t.account }}</span>
+                                        </div>
+                                        <div class="text-xs text-slate-400 flex items-center space-x-2 mt-0.5">
+                                            <span>{{ t.date }}</span>
+                                            <span v-if="t.note" class="truncate max-w-[150px] sm:max-w-[200px]">・{{ t.note }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-bold text-sm" :class="t.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'">
+                                        {{ t.type === 'income' ? '+' : '-' }}{{ formatCurrency(t.amount) }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- HK Smart Insights & Reminders Card -->
+                    <div class="bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl p-5 shadow-sm flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">香港理財智囊</span>
+                                <i class="fa-solid fa-lightbulb text-amber-300 text-lg"></i>
+                            </div>
+                            <h4 class="font-bold text-lg mb-2">本月財務提示</h4>
+                            
+                            <ul class="space-y-3 text-xs text-slate-300">
+                                <li class="flex items-start space-x-2">
+                                    <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
+                                    <span><strong>支出大頭：</strong>本月最高消費類別為「{{ topExpenseCategory.name }}」，已支出 {{ formatCurrency(topExpenseCategory.amount) }}。</span>
+                                </li>
+                                <li class="flex items-start space-x-2">
+                                    <i class="fa-solid fa-credit-card text-sky-400 mt-0.5"></i>
+                                    <span><strong>常用支付：</strong>{{ topPaymentMethod }} 是您最常使用的付款方式。記得定期核對八達通或 PayMe 賬單！</span>
+                                </li>
+                                <li class="flex items-start space-x-2">
+                                    <i class="fa-solid fa-piggy-bank text-amber-400 mt-0.5"></i>
+                                    <span><strong>儲蓄率指標：</strong>建議目標保持每月儲蓄 20% 以上，為積金與應急基金作準備。</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-slate-700/60 flex items-center justify-between text-xs text-slate-400">
+                            <span>數據自動備份至本地瀏覽器</span>
+                            <button @click="openAddModal()" class="text-sky-300 hover:text-white font-medium underline">
+                                立即記賬
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- TAB 2: DETAILED TRANSACTIONS LIST -->
+            <div v-if="currentTab === 'transactions'" class="space-y-4">
+                
+                <!-- Filter Bar -->
+                <div class="bg-white dark:bg-slate-800 p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                    <div class="flex flex-col sm:flex-row flex-wrap gap-2 items-stretch sm:items-center flex-1">
+                        <!-- Search Box -->
+                        <div class="relative flex-1 min-w-[180px]">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" v-model="filterSearch" placeholder="搜尋備註、類別或戶口..." class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl pl-8 pr-3 py-2 sm:py-1.5 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+
+                        <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+                            <!-- Type Selector -->
+                            <select v-model="filterType" class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 sm:py-1.5 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                <option value="all">所有收支</option>
+                                <option value="expense">支出 (Expense)</option>
+                                <option value="income">收入 (Income)</option>
+                            </select>
+
+                            <!-- Category Selector -->
+                            <select v-model="filterCategory" class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 sm:py-1.5 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                <option value="all">所有類別</option>
+                                <option v-for="cat in allCategoryNames" :key="cat" :value="cat">{{ cat }}</option>
+                            </select>
+                        </div>
+
+                        <!-- Account Selector -->
+                        <select v-model="filterAccount" class="bg-slate-50 dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl px-3 py-2 sm:py-1.5 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <option value="all">所有支付方式</option>
+                            <option v-for="acc in hkAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center justify-between sm:justify-end space-x-2 text-xs text-slate-500 pt-1 sm:pt-0 border-t sm:border-0 border-slate-100 dark:border-slate-700">
+                        <span>共 {{ filteredTransactions.length }} 筆交易</span>
+                        <button v-if="filterSearch || filterType !== 'all' || filterCategory !== 'all' || filterAccount !== 'all'" @click="resetFilters()" class="text-sky-600 hover:underline">
+                            重置篩選
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile Transactions Card View (Optimized for Touchscreen Phones) -->
+                <div class="sm:hidden space-y-2.5">
+                    <div v-if="filteredTransactions.length === 0" class="bg-white dark:bg-slate-800 p-8 rounded-2xl border border-slate-200 dark:border-slate-700 text-center text-slate-400 text-xs">
+                        沒有符合條件的交易紀錄
+                    </div>
+                    <div v-for="t in filteredTransactions" :key="t.id" class="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex items-center justify-between active:bg-slate-50 dark:active:bg-slate-700/50 transition">
+                        <div class="flex items-center space-x-3 min-w-0">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-sm" :class="getCategoryBg(t.category)">
+                                <i :class="getCategoryIcon(t.category)"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-sm text-slate-900 dark:text-white truncate">{{ t.category }}</span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 font-medium whitespace-nowrap">{{ t.account }}</span>
+                                </div>
+                                <div class="text-[11px] text-slate-400 flex items-center space-x-1.5 mt-0.5">
+                                    <span class="font-mono">{{ t.date }}</span>
+                                    <span v-if="t.note" class="truncate max-w-[120px]">・{{ t.note }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0 ml-2">
+                            <div class="font-extrabold text-sm font-mono" :class="t.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'">
+                                {{ t.type === 'income' ? '+' : '-' }}{{ formatCurrency(t.amount) }}
+                            </div>
+                            <div class="flex items-center justify-end space-x-2 mt-1">
+                                <button @click="editTransaction(t)" class="text-slate-400 hover:text-sky-600 p-1" title="編輯">
+                                    <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                </button>
+                                <button @click="deleteTransaction(t.id)" class="text-slate-400 hover:text-rose-600 p-1" title="刪除">
+                                    <i class="fa-solid fa-trash-can text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop / Tablet Transaction Table View -->
+                <div class="hidden sm:block bg-white dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 uppercase tracking-wider">
+                                <tr>
+                                    <th class="py-3 px-4">日期</th>
+                                    <th class="py-3 px-4">類型 & 類別</th>
+                                    <th class="py-3 px-4">支付方式</th>
+                                    <th class="py-3 px-4">備註</th>
+                                    <th class="py-3 px-4 text-right">金額 (HKD)</th>
+                                    <th class="py-3 px-4 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                <tr v-if="filteredTransactions.length === 0">
+                                    <td colspan="6" class="text-center py-12 text-slate-400">
+                                        沒有符合條件的交易紀錄
+                                    </td>
+                                </tr>
+                                <tr v-for="t in filteredTransactions" :key="t.id" class="hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition">
+                                    <td class="py-3 px-4 whitespace-nowrap text-xs text-slate-500 dark:text-slate-400 font-mono">
+                                        {{ t.date }}
+                                    </td>
+                                    <td class="py-3 px-4 whitespace-nowrap">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="w-7 h-7 rounded-lg flex items-center justify-center text-xs" :class="getCategoryBg(t.category)">
+                                                <i :class="getCategoryIcon(t.category)"></i>
+                                            </span>
+                                            <span class="font-medium text-slate-800 dark:text-slate-100">{{ t.category }}</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 px-4 whitespace-nowrap">
+                                        <span class="px-2 py-1 rounded-md text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                                            {{ t.account }}
+                                        </span>
+                                    </td>
+                                    <td class="py-3 px-4 text-slate-600 dark:text-slate-300 text-xs max-w-xs truncate">
+                                        {{ t.note || '-' }}
+                                    </td>
+                                    <td class="py-3 px-4 text-right font-bold whitespace-nowrap font-mono" :class="t.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-900 dark:text-white'">
+                                        {{ t.type === 'income' ? '+' : '-' }}{{ formatCurrency(t.amount) }}
+                                    </td>
+                                    <td class="py-3 px-4 text-center whitespace-nowrap">
+                                        <div class="flex items-center justify-center space-x-2">
+                                            <button @click="editTransaction(t)" class="p-1.5 text-slate-400 hover:text-sky-600 rounded transition" title="編輯">
+                                                <i class="fa-solid fa-pen-to-square"></i>
+                                            </button>
+                                            <button @click="deleteTransaction(t.id)" class="p-1.5 text-slate-400 hover:text-rose-600 rounded transition" title="刪除">
+                                                <i class="fa-solid fa-trash-can"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: BUDGET MANAGEMENT -->
+            <div v-if="currentTab === 'budget'" class="space-y-6">
+                
+                <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <h3 class="font-bold text-slate-900 dark:text-white text-lg">月度類別預算規劃</h3>
+                        <p class="text-xs text-slate-500 mt-1">設定每個消費類別的每月上限金額，幫助掌控日常支出。</p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <div class="text-right">
+                            <span class="text-xs text-slate-500 block">本月已用總預算</span>
+                            <span class="font-bold text-slate-900 dark:text-white font-mono">{{ formatCurrency(monthlySummary.expense) }} / {{ formatCurrency(totalBudgetLimit) }}</span>
+                        </div>
+                        <button @click="openTotalBudgetEditModal()" class="bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-600 dark:text-sky-300 border border-sky-200 dark:border-sky-800 text-xs font-semibold px-3 py-2 rounded-xl transition flex items-center space-x-1 shadow-sm">
+                            <i class="fa-solid fa-pen-to-square"></i>
+                            <span>修改總預算</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Category Budget Cards Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-for="cat in expenseCategories" :key="cat.name" class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                        
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex items-center space-x-2.5">
+                                <div class="w-9 h-9 rounded-xl flex items-center justify-center" :class="cat.bg">
+                                    <i :class="cat.icon" class="text-sm"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-bold text-slate-900 dark:text-white text-sm">{{ cat.name }}</h4>
+                                    <span class="text-[11px] text-slate-400">已使用 {{ formatCurrency(getCategoryExpense(cat.name)) }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Edit Budget Button -->
+                            <button @click="openBudgetEditModal(cat.name)" class="text-slate-400 hover:text-sky-600 text-xs px-2 py-1 rounded border border-slate-200 dark:border-slate-700 hover:border-sky-500 transition">
+                                <i class="fa-solid fa-pen text-[10px] mr-1"></i>設定
+                            </button>
+                        </div>
+
+                        <!-- Progress Bar & Limit Info -->
+                        <div class="space-y-1.5">
+                            <div class="flex justify-between text-xs">
+                                <span class="text-slate-500">上限: {{ formatCurrency(categoryBudgets[cat.name] || 0) }}</span>
+                                <span class="font-semibold" :class="getCategoryProgress(cat.name) > 100 ? 'text-rose-600' : 'text-slate-700 dark:text-slate-300'">
+                                    {{ getCategoryProgress(cat.name) }}%
+                                </span>
+                            </div>
+                            
+                            <div class="w-full bg-slate-100 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+                                <div class="h-full transition-all duration-300 rounded-full"
+                                     :class="getCategoryProgress(cat.name) > 100 ? 'bg-rose-500' : getCategoryProgress(cat.name) > 85 ? 'bg-amber-500' : 'bg-emerald-500'"
+                                     :style="{ width: Math.min(getCategoryProgress(cat.name), 100) + '%' }">
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between text-[11px] text-slate-400 pt-1">
+                                <span>剩餘: {{ formatCurrency(Math.max(0, (categoryBudgets[cat.name] || 0) - getCategoryExpense(cat.name))) }}</span>
+                                <span v-if="getCategoryProgress(cat.name) > 100" class="text-rose-500 font-semibold">已超支 {{ formatCurrency(getCategoryExpense(cat.name) - (categoryBudgets[cat.name] || 0)) }}</span>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- TAB 4: DATA & SETTINGS -->
+            <div v-if="currentTab === 'settings'" class="space-y-6">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Export / Backup Card -->
+                    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-file-export"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900 dark:text-white">數據備份與匯出</h3>
+                                <p class="text-xs text-slate-500">將您的記帳紀錄下載備份，防止瀏覽器清除。</p>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3 pt-2">
+                            <button @click="exportExcel()" class="flex-1 min-w-[140px] bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-file-excel"></i>
+                                <span>匯出為 Excel 試算表 (.xlsx)</span>
+                            </button>
+                            <button @click="exportJSON()" class="flex-1 min-w-[140px] bg-sky-600 hover:bg-sky-700 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-file-code"></i>
+                                <span>匯出 JSON 完整備份</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Import / Restore Card -->
+                    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-file-import"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900 dark:text-white">數據還原與匯入</h3>
+                                <p class="text-xs text-slate-500">選擇先前備份的 JSON 檔案載入記帳紀錄。</p>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 flex items-center space-x-3">
+                            <input type="file" ref="fileInput" @change="importJSON" accept=".json" class="hidden">
+                            <button @click="$refs.fileInput.click()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center justify-center space-x-2 transition shadow-sm w-full">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>選擇 JSON 檔案匯入</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- System Title & Reset Card -->
+                    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm space-y-4 md:col-span-2">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-slate-900 dark:text-white">範例數據與系統清空</h3>
+                                <p class="text-xs text-slate-500">您可以載入預設香港範例記帳數據以體驗功能，或清除所有本地數據。</p>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3 pt-2">
+                            <button @click="startEditingAppName()" class="bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:hover:bg-sky-900/60 dark:text-sky-300 font-medium py-2.5 px-4 rounded-xl text-xs flex items-center space-x-2 transition border border-sky-200 dark:border-sky-800">
+                                <i class="fa-solid fa-pen-to-square"></i>
+                                <span>修改系統自訂名稱</span>
+                            </button>
+                            <button @click="loadSampleData()" class="bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 px-4 rounded-xl text-xs flex items-center space-x-2 transition shadow-sm">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span>載入香港示範數據 (Demo)</span>
+                            </button>
+                            <button @click="confirmClearAll()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-400 font-medium py-2.5 px-4 rounded-xl text-xs flex items-center space-x-2 transition border border-rose-200 dark:border-rose-800">
+                                <i class="fa-solid fa-trash"></i>
+                                <span>清空所有數據</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </main>
+
+        <!-- ADD / EDIT TRANSACTION MODAL -->
+        <div v-if="showModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl max-w-md w-full p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+                
+                <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                    <h3 class="font-bold text-lg text-slate-900 dark:text-white flex items-center space-x-2">
+                        <i :class="form.type === 'expense' ? 'fa-solid fa-minus-circle text-rose-500' : 'fa-solid fa-plus-circle text-emerald-500'"></i>
+                        <span>{{ isEditing ? '編輯交易紀錄' : '記一筆新收支' }}</span>
+                    </h3>
+                    <button @click="closeModal()" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-lg p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <form @submit.prevent="saveTransaction" class="space-y-4">
+                    
+                    <!-- Expense / Income Switcher Tab -->
+                    <div class="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-700/60 p-1 rounded-xl">
+                        <button type="button" @click="form.type = 'expense'" :class="form.type === 'expense' ? 'bg-white dark:bg-slate-800 text-rose-600 font-bold shadow-sm' : 'text-slate-600 dark:text-slate-300 font-medium'" class="py-2.5 sm:py-2 text-xs rounded-lg transition text-center">
+                            支出 (Expense)
+                        </button>
+                        <button type="button" @click="form.type = 'income'" :class="form.type === 'income' ? 'bg-white dark:bg-slate-800 text-emerald-600 font-bold shadow-sm' : 'text-slate-600 dark:text-slate-300 font-medium'" class="py-2.5 sm:py-2 text-xs rounded-lg transition text-center">
+                            收入 (Income)
+                        </button>
+                    </div>
+
+                    <!-- Amount Field (HKD) -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">金額 (HKD $)</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">HK$</span>
+                            <input type="number" step="0.1" v-model.number="form.amount" required min="0.1" placeholder="0.00" class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white font-bold text-base sm:text-lg rounded-xl pl-12 pr-4 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Date & Category Row -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">日期</label>
+                            <input type="date" v-model="form.date" required class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-base sm:text-xs rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">類別</label>
+                            <select v-model="form.category" required class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-base sm:text-xs rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                <template v-if="form.type === 'expense'">
+                                    <option v-for="cat in expenseCategories" :key="cat.name" :value="cat.name">{{ cat.name }}</option>
+                                </template>
+                                <template v-else>
+                                    <option v-for="cat in incomeCategories" :key="cat.name" :value="cat.name">{{ cat.name }}</option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Payment Account / Method Selector -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">支付 / 存入賬戶 (香港常見)</label>
+                        <select v-model="form.account" required class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-base sm:text-xs rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <option v-for="acc in hkAccountOptions" :key="acc" :value="acc">{{ acc }}</option>
+                        </select>
+                    </div>
+
+                    <!-- Note Field -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">備註 / 商戶說明 (選填)</label>
+                        <input type="text" v-model="form.note" placeholder="例如：大家樂午餐、港鐵加值、兩餸飯..." class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white text-base sm:text-xs rounded-xl px-3 py-2.5 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                    </div>
+
+                    <!-- Modal Actions -->
+                    <div class="pt-3 flex space-x-3">
+                        <button type="button" @click="closeModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-semibold py-3 rounded-xl transition">
+                            取消
+                        </button>
+                        <button type="submit" class="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-3 rounded-xl transition shadow-md active:scale-95">
+                            {{ isEditing ? '更新儲存' : '確定新增' }}
+                        </button>
+                    </div>
+
+                </form>
+            </div>
+        </div>
+
+        <!-- EDIT CATEGORY BUDGET MODAL -->
+        <div v-if="showBudgetModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+                <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                    <h3 class="font-bold text-slate-900 dark:text-white">設定「{{ budgetEditingCat }}」預算</h3>
+                    <button @click="showBudgetModal = false" class="text-slate-400 hover:text-slate-600 text-lg p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">每月目標上限金額 (HKD)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">HK$</span>
+                        <input type="number" v-model.number="tempBudgetAmount" min="0" step="100" class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white font-bold text-base sm:text-lg rounded-xl pl-12 pr-4 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button @click="showBudgetModal = false" class="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold py-3 rounded-xl">
+                        取消
+                    </button>
+                    <button @click="saveCategoryBudget()" class="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-3 rounded-xl shadow active:scale-95">
+                        儲存預算
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- EDIT TOTAL BUDGET MODAL -->
+        <div v-if="showTotalBudgetModal" class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl max-w-sm w-full p-6 border border-slate-200 dark:border-slate-700 shadow-2xl space-y-4">
+                <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+                    <h3 class="font-bold text-slate-900 dark:text-white">修改每月總預算</h3>
+                    <button @click="showTotalBudgetModal = false" class="text-slate-400 hover:text-slate-600 text-lg p-1">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">每月總預算目標 (HKD)</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">HK$</span>
+                        <input type="number" v-model.number="tempTotalBudgetAmount" min="0" step="500" class="w-full bg-slate-50 dark:bg-slate-700/50 border border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white font-bold text-base sm:text-lg rounded-xl pl-12 pr-4 py-2 focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                        * 調整總預算將會按現有比例自動分配至各個消費類別，您亦可隨後手動微調單一類別。
+                    </p>
+                </div>
+
+                <div class="pt-2 flex space-x-2">
+                    <button @click="showTotalBudgetModal = false" class="flex-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold py-3 rounded-xl">
+                        取消
+                    </button>
+                    <button @click="saveTotalBudget()" class="flex-1 bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold py-3 rounded-xl shadow active:scale-95">
+                        儲存總預算
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Toast -->
+        <div v-if="toastMsg" class="fixed bottom-20 sm:bottom-6 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-50 bg-slate-900/95 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center space-x-2.5 border border-slate-700 text-xs font-medium animate-bounce max-w-[90vw]">
+            <i class="fa-solid fa-circle-info text-sky-400 text-sm"></i>
+            <span>{{ toastMsg }}</span>
+        </div>
+
+        <!-- Mobile Bottom Navigation Bar (App Dock - Visible on small screens) -->
+        <nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-700/80 z-40 px-3 py-1.5 pb-safe shadow-lg flex items-center justify-around">
+            <button @click="currentTab = 'overview'" :class="currentTab === 'overview' ? 'text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'" class="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition text-xs space-y-0.5 active:scale-95">
+                <i class="fa-solid fa-chart-pie text-lg"></i>
+                <span class="text-[10px]">概況</span>
+            </button>
+
+            <button @click="currentTab = 'transactions'" :class="currentTab === 'transactions' ? 'text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'" class="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition text-xs space-y-0.5 active:scale-95">
+                <i class="fa-solid fa-list-check text-lg"></i>
+                <span class="text-[10px]">明細</span>
+            </button>
+
+            <!-- Center Floating Action Button (Quick Add) -->
+            <button @click="openAddModal()" class="-mt-5 bg-gradient-to-tr from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white w-12 h-12 rounded-full shadow-lg shadow-sky-500/30 flex items-center justify-center text-lg active:scale-90 transition border-2 border-white dark:border-slate-800" title="記一筆">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+
+            <button @click="currentTab = 'budget'" :class="currentTab === 'budget' ? 'text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'" class="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition text-xs space-y-0.5 active:scale-95">
+                <i class="fa-solid fa-bullseye text-lg"></i>
+                <span class="text-[10px]">預算</span>
+            </button>
+
+            <button @click="currentTab = 'settings'" :class="currentTab === 'settings' ? 'text-sky-600 dark:text-sky-400 font-bold' : 'text-slate-500 dark:text-slate-400 font-medium'" class="flex flex-col items-center justify-center py-1 px-3 rounded-xl transition text-xs space-y-0.5 active:scale-95">
+                <i class="fa-solid fa-sliders text-lg"></i>
+                <span class="text-[10px]">設定</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // Application Title Customization
+                const appName = ref('富港記帳');
+                const isEditingAppName = ref(false);
+                const tempAppName = ref('');
+                const appNameInputRef = ref(null);
+
+                // Application State
+                const currentTab = ref('overview');
+                const isDark = ref(false);
+                const toastMsg = ref('');
+
+                // Date Filter (YYYY-MM)
+                const now = new Date();
+                const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const selectedMonth = ref(currentMonthStr);
+
+                // Categories Definition (Hong Kong Specific)
+                const expenseCategories = ref([
+                    { name: '飲食餐飲', icon: 'fa-solid fa-utensils', bg: 'bg-orange-100 text-orange-600 dark:bg-orange-950/50 dark:text-orange-400' },
+                    { name: '交通出行', icon: 'fa-solid fa-bus', bg: 'bg-blue-100 text-blue-600 dark:bg-blue-950/50 dark:text-blue-400' },
+                    { name: '住屋租金', icon: 'fa-solid fa-house', bg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400' },
+                    { name: '購物娛樂', icon: 'fa-solid fa-bag-shopping', bg: 'bg-pink-100 text-pink-600 dark:bg-pink-950/50 dark:text-pink-400' },
+                    { name: '水電煤訊', icon: 'fa-solid fa-bolt', bg: 'bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400' },
+                    { name: '醫療保險', icon: 'fa-solid fa-notes-medical', bg: 'bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400' },
+                    { name: '強積金/投資', icon: 'fa-solid fa-chart-line', bg: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400' },
+                    { name: '其他雜項', icon: 'fa-solid fa-ellipsis', bg: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300' }
+                ]);
+
+                const incomeCategories = ref([
+                    { name: '薪金底薪', icon: 'fa-solid fa-briefcase' },
+                    { name: '雙糧/花紅', icon: 'fa-solid fa-gift' },
+                    { name: '投資回報', icon: 'fa-solid fa-coins' },
+                    { name: '副業/兼職', icon: 'fa-solid fa-laptop-code' },
+                    { name: '親友轉帳', icon: 'fa-solid fa-hand-holding-dollar' },
+                    { name: '其他收入', icon: 'fa-solid fa-wallet' }
+                ]);
+
+                // Payment Accounts (HK Context)
+                const hkAccountOptions = ref([
+                    '八達通 (Octopus)',
+                    'PayMe',
+                    '轉數快 (FPS)',
+                    '信用卡 (Credit Card)',
+                    '銀行戶口 (Bank Account)',
+                    'AlipayHK / WeChat Pay',
+                    '現金 (Cash)'
+                ]);
+
+                // Initial Category Budget Caps
+                const categoryBudgets = ref({
+                    '飲食餐飲': 6000,
+                    '交通出行': 1200,
+                    '住屋租金': 12000,
+                    '購物娛樂': 3500,
+                    '水電煤訊': 1500,
+                    '醫療保險': 2000,
+                    '強積金/投資': 3000,
+                    '其他雜項': 1000
+                });
+
+                // Sample Hong Kong Transactions
+                const sampleTransactions = [
+                    { id: '1', type: 'income', amount: 32000, category: '薪金底薪', account: '銀行戶口 (Bank Account)', date: `${currentMonthStr}-01`, note: '發薪日薪金入賬' },
+                    { id: '2', type: 'expense', amount: 11500, category: '住屋租金', account: '轉數快 (FPS)', date: `${currentMonthStr}-02`, note: '繳交本月房租' },
+                    { id: '3', type: 'expense', amount: 88, category: '飲食餐飲', account: '八達通 (Octopus)', date: `${currentMonthStr}-03`, note: '翠華餐廳早餐' },
+                    { id: '4', type: 'expense', amount: 500, category: '交通出行', account: '八達通 (Octopus)', date: `${currentMonthStr}-05`, note: '八達通自動加值' },
+                    { id: '5', type: 'expense', amount: 280, category: '購物娛樂', account: 'PayMe', date: `${currentMonthStr}-08`, note: '朋友聚餐 PayMeAA' },
+                    { id: '6', type: 'expense', amount: 650, category: '水電煤訊', account: '信用卡 (Credit Card)', date: `${currentMonthStr}-10`, note: '香港寬頻 + 手機月費' },
+                    { id: '7', type: 'expense', amount: 1500, category: '強積金/投資', account: '銀行戶口 (Bank Account)', date: `${currentMonthStr}-12`, note: '股票供款' },
+                    { id: '8', type: 'expense', amount: 145, category: '飲食餐飲', account: 'AlipayHK / WeChat Pay', date: `${currentMonthStr}-15`, note: '兩餸飯與手搖飲料' },
+                    { id: '9', type: 'expense', amount: 1200, category: '購物娛樂', account: '信用卡 (Credit Card)', date: `${currentMonthStr}-18`, note: 'HKTVmall 買日用品' },
+                    { id: '10', type: 'income', amount: 2500, category: '副業/兼職', account: '轉數快 (FPS)', date: `${currentMonthStr}-20`, note: '自由職業稿費' }
+                ];
+
+                const transactions = ref([]);
+
+                // Filtering State
+                const filterSearch = ref('');
+                const filterType = ref('all');
+                const filterCategory = ref('all');
+                const filterAccount = ref('all');
+
+                // Modal Control State
+                const showModal = ref(false);
+                const isEditing = ref(false);
+                const form = ref({
+                    id: null,
+                    type: 'expense',
+                    amount: '',
+                    date: `${currentMonthStr}-${String(now.getDate()).padStart(2, '0')}`,
+                    category: '飲食餐飲',
+                    account: '八達通 (Octopus)',
+                    note: ''
+                });
+
+                // Budget Modal State
+                const showBudgetModal = ref(false);
+                const budgetEditingCat = ref('');
+                const tempBudgetAmount = ref(0);
+
+                const showTotalBudgetModal = ref(false);
+                const tempTotalBudgetAmount = ref(0);
+
+                // Chart References
+                let categoryChartInstance = null;
+                let trendChartInstance = null;
+
+                // App Name Inline Editing Methods
+                const startEditingAppName = () => {
+                    tempAppName.value = appName.value;
+                    isEditingAppName.value = true;
+                    nextTick(() => {
+                        if (appNameInputRef.value) {
+                            appNameInputRef.value.focus();
+                            appNameInputRef.value.select();
+                        }
+                    });
+                };
+
+                const saveAppName = () => {
+                    if (tempAppName.value.trim()) {
+                        appName.value = tempAppName.value.trim();
+                        localStorage.setItem('hk_budget_app_name', appName.value);
+                        showToast(`系統名稱已更換為「${appName.value}」`);
+                    }
+                    isEditingAppName.value = false;
+                };
+
+                const cancelEditingAppName = () => {
+                    isEditingAppName.value = false;
+                };
+
+                // Computed Properties
+                const currentMonthTransactions = computed(() => {
+                    return transactions.value.filter(t => t.date.startsWith(selectedMonth.value));
+                });
+
+                const filteredTransactions = computed(() => {
+                    return transactions.value.filter(t => {
+                        const matchMonth = t.date.startsWith(selectedMonth.value);
+                        const matchSearch = !filterSearch.value || 
+                            t.note.toLowerCase().includes(filterSearch.value.toLowerCase()) || 
+                            t.category.includes(filterSearch.value) ||
+                            t.account.includes(filterSearch.value);
+                        const matchType = filterType.value === 'all' || t.type === filterType.value;
+                        const matchCategory = filterCategory.value === 'all' || t.category === filterCategory.value;
+                        const matchAccount = filterAccount.value === 'all' || t.account === filterAccount.value;
+
+                        return matchMonth && matchSearch && matchType && matchCategory && matchAccount;
+                    }).sort((a, b) => new Date(b.date) - new Date(a.date));
+                });
+
+                const recentTransactions = computed(() => {
+                    return [...currentMonthTransactions.value]
+                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                        .slice(0, 6);
+                });
+
+                const monthlySummary = computed(() => {
+                    let income = 0;
+                    let expense = 0;
+                    let incomeCount = 0;
+
+                    currentMonthTransactions.value.forEach(t => {
+                        if (t.type === 'income') {
+                            income += Number(t.amount);
+                            incomeCount++;
+                        } else {
+                            expense += Number(t.amount);
+                        }
+                    });
+
+                    const net = income - expense;
+                    const savingsRate = income > 0 ? Math.round((net / income) * 100) : 0;
+                    
+                    // Daily average expense logic
+                    const daysInMonth = new Date(selectedMonth.value.split('-')[0], selectedMonth.value.split('-')[1], 0).getDate();
+                    const dailyExpenseAvg = Math.round(expense / daysInMonth);
+
+                    return { income, expense, net, savingsRate, incomeCount, dailyExpenseAvg };
+                });
+
+                const totalBudgetLimit = computed(() => {
+                    return Object.values(categoryBudgets.value).reduce((a, b) => a + Number(b), 0);
+                });
+
+                const overallBudgetPercent = computed(() => {
+                    if (totalBudgetLimit.value === 0) return 0;
+                    return Math.round((monthlySummary.value.expense / totalBudgetLimit.value) * 100);
+                });
+
+                const allCategoryNames = computed(() => {
+                    return [
+                        ...expenseCategories.value.map(c => c.name),
+                        ...incomeCategories.value.map(c => c.name)
+                    ];
+                });
+
+                const categoryChartEmpty = computed(() => {
+                    return monthlySummary.value.expense === 0;
+                });
+
+                const topExpenseCategory = computed(() => {
+                    const catMap = {};
+                    currentMonthTransactions.value.filter(t => t.type === 'expense').forEach(t => {
+                        catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
+                    });
+
+                    let topName = '無資料';
+                    let topAmount = 0;
+                    for (const [cat, amt] of Object.entries(catMap)) {
+                        if (amt > topAmount) {
+                            topAmount = amt;
+                            topName = cat;
+                        }
+                    }
+                    return { name: topName, amount: topAmount };
+                });
+
+                const topPaymentMethod = computed(() => {
+                    const accMap = {};
+                    currentMonthTransactions.value.forEach(t => {
+                        accMap[t.account] = (accMap[t.account] || 0) + 1;
+                    });
+                    let topAcc = '八達通 (Octopus)';
+                    let maxCnt = 0;
+                    for (const [acc, cnt] of Object.entries(accMap)) {
+                        if (cnt > maxCnt) {
+                            maxCnt = cnt;
+                            topAcc = acc;
+                        }
+                    }
+                    return topAcc;
+                });
+
+                // Helper Methods
+                const formatCurrency = (val) => {
+                    if (isNaN(val)) return '$0.00';
+                    return new Intl.NumberFormat('zh-HK', { style: 'currency', currency: 'HKD' }).format(val);
+                };
+
+                const showToast = (msg) => {
+                    toastMsg.value = msg;
+                    setTimeout(() => { toastMsg.value = ''; }, 3000);
+                };
+
+                const getCategoryBg = (catName) => {
+                    const found = expenseCategories.value.find(c => c.name === catName);
+                    return found ? found.bg : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+                };
+
+                const getCategoryIcon = (catName) => {
+                    const foundExp = expenseCategories.value.find(c => c.name === catName);
+                    if (foundExp) return foundExp.icon;
+                    const foundInc = incomeCategories.value.find(c => c.name === catName);
+                    if (foundInc) return foundInc.icon;
+                    return 'fa-solid fa-receipt';
+                };
+
+                const getCategoryExpense = (catName) => {
+                    return currentMonthTransactions.value
+                        .filter(t => t.type === 'expense' && t.category === catName)
+                        .reduce((sum, t) => sum + Number(t.amount), 0);
+                };
+
+                const getCategoryProgress = (catName) => {
+                    const budget = categoryBudgets.value[catName] || 0;
+                    if (budget === 0) return 0;
+                    const spent = getCategoryExpense(catName);
+                    return Math.round((spent / budget) * 100);
+                };
+
+                // Date controls
+                const changeMonth = (offset) => {
+                    const [y, m] = selectedMonth.value.split('-').map(Number);
+                    const dt = new Date(y, m - 1 + offset, 1);
+                    selectedMonth.value = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+                };
+
+                const resetToCurrentMonth = () => {
+                    selectedMonth.value = currentMonthStr;
+                };
+
+                const resetFilters = () => {
+                    filterSearch.value = '';
+                    filterType.value = 'all';
+                    filterCategory.value = 'all';
+                    filterAccount.value = 'all';
+                };
+
+                // Dark mode toggle
+                const toggleDarkMode = () => {
+                    isDark.value = !isDark.value;
+                    if (isDark.value) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                    localStorage.setItem('hk_budget_dark', isDark.value ? 'true' : 'false');
+                    nextTick(() => renderCharts());
+                };
+
+                // Modal Operations
+                const openAddModal = () => {
+                    isEditing.value = false;
+                    form.value = {
+                        id: Date.now().toString(),
+                        type: 'expense',
+                        amount: '',
+                        date: `${selectedMonth.value}-${String(now.getDate()).padStart(2, '0')}`,
+                        category: '飲食餐飲',
+                        account: '八達通 (Octopus)',
+                        note: ''
+                    };
+                    showModal.value = true;
+                };
+
+                const editTransaction = (t) => {
+                    isEditing.value = true;
+                    form.value = { ...t };
+                    showModal.value = true;
+                };
+
+                const closeModal = () => {
+                    showModal.value = false;
+                };
+
+                const saveTransaction = () => {
+                    if (isEditing.value) {
+                        const idx = transactions.value.findIndex(t => t.id === form.value.id);
+                        if (idx !== -1) transactions.value[idx] = { ...form.value };
+                        showToast('成功更新交易紀錄');
+                    } else {
+                        transactions.value.unshift({ ...form.value });
+                        showToast('成功記下一筆新收支');
+                    }
+                    saveLocalData();
+                    closeModal();
+                };
+
+                const deleteTransaction = (id) => {
+                    if (confirm('確定要刪除這筆交易紀錄嗎？')) {
+                        transactions.value = transactions.value.filter(t => t.id !== id);
+                        saveLocalData();
+                        showToast('紀錄已刪除');
+                    }
+                };
+
+                // Budget edit operations
+                const openBudgetEditModal = (catName) => {
+                    budgetEditingCat.value = catName;
+                    tempBudgetAmount.value = categoryBudgets.value[catName] || 0;
+                    showBudgetModal.value = true;
+                };
+
+                const saveCategoryBudget = () => {
+                    categoryBudgets.value[budgetEditingCat.value] = tempBudgetAmount.value;
+                    localStorage.setItem('hk_budget_caps', JSON.stringify(categoryBudgets.value));
+                    showBudgetModal.value = false;
+                    showToast(`已更新「${budgetEditingCat.value}」預算目標`);
+                };
+
+                const openTotalBudgetEditModal = () => {
+                    tempTotalBudgetAmount.value = totalBudgetLimit.value;
+                    showTotalBudgetModal.value = true;
+                };
+
+                const saveTotalBudget = () => {
+                    const oldTotal = totalBudgetLimit.value;
+                    const newTotal = Number(tempTotalBudgetAmount.value);
+                    if (isNaN(newTotal) || newTotal < 0) return;
+
+                    if (oldTotal > 0) {
+                        const ratio = newTotal / oldTotal;
+                        const keys = Object.keys(categoryBudgets.value);
+                        let currentSum = 0;
+                        keys.forEach((cat, idx) => {
+                            if (idx === keys.length - 1) {
+                                categoryBudgets.value[cat] = Math.max(0, newTotal - currentSum);
+                            } else {
+                                const scaled = Math.round(((categoryBudgets.value[cat] || 0) * ratio) / 100) * 100;
+                                categoryBudgets.value[cat] = scaled;
+                                currentSum += scaled;
+                            }
+                        });
+                    } else {
+                        const count = expenseCategories.value.length;
+                        const avg = Math.round((newTotal / count) / 100) * 100;
+                        expenseCategories.value.forEach((cat, idx) => {
+                            if (idx === count - 1) {
+                                categoryBudgets.value[cat.name] = Math.max(0, newTotal - (avg * (count - 1)));
+                            } else {
+                                categoryBudgets.value[cat.name] = avg;
+                            }
+                        });
+                    }
+
+                    localStorage.setItem('hk_budget_caps', JSON.stringify(categoryBudgets.value));
+                    showTotalBudgetModal.value = false;
+                    showToast(`已將月度總預算調整為 ${formatCurrency(newTotal)}`);
+                };
+
+                // Data Backup / Restore / Reset
+                const saveLocalData = () => {
+                    localStorage.setItem('hk_budget_transactions', JSON.stringify(transactions.value));
+                };
+
+                const exportExcel = () => {
+                    if (transactions.value.length === 0) {
+                        showToast('沒有可匯出的交易紀錄');
+                        return;
+                    }
+
+                    // 1. Create Transaction List Worksheet
+                    const excelData = transactions.value.map(t => ({
+                        '日期': t.date,
+                        '收支類型': t.type === 'income' ? '收入' : '支出',
+                        '金額 (HKD)': t.amount,
+                        '類別': t.category,
+                        '支付/存入方式': t.account,
+                        '備註說明': t.note || ''
+                    }));
+
+                    const worksheet = XLSX.utils.json_to_sheet(excelData);
+                    worksheet['!cols'] = [
+                        { wch: 12 },
+                        { wch: 10 },
+                        { wch: 14 },
+                        { wch: 16 },
+                        { wch: 22 },
+                        { wch: 30 }
+                    ];
+
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "交易明細");
+
+                    // 2. Create Category Budget Overview Worksheet
+                    const budgetData = Object.entries(categoryBudgets.value).map(([category, limit]) => {
+                        const spent = getCategoryExpense(category);
+                        return {
+                            '消費類別': category,
+                            '本月預算上限 (HKD)': limit,
+                            '本月已支出 (HKD)': spent,
+                            '剩餘預算 (HKD)': Math.max(0, limit - spent),
+                            '使用率': limit > 0 ? `${Math.round((spent / limit) * 100)}%` : '0%'
+                        };
+                    });
+                    const budgetWorksheet = XLSX.utils.json_to_sheet(budgetData);
+                    budgetWorksheet['!cols'] = [
+                        { wch: 16 },
+                        { wch: 20 },
+                        { wch: 20 },
+                        { wch: 18 },
+                        { wch: 12 }
+                    ];
+                    XLSX.utils.book_append_sheet(workbook, budgetWorksheet, "預算概況");
+
+                    // Save Excel File
+                    XLSX.writeFile(workbook, `${appName.value}_Export_${selectedMonth.value}.xlsx`);
+                    showToast('已成功匯出 Excel (.xlsx) 試算表');
+                };
+
+                const exportJSON = () => {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                        appName: appName.value,
+                        transactions: transactions.value,
+                        budgets: categoryBudgets.value
+                    }, null, 2));
+                    const link = document.createElement('a');
+                    link.href = dataStr;
+                    link.download = `${appName.value}_Backup_${new Date().toISOString().split('T')[0]}.json`;
+                    link.click();
+                    showToast('已匯出完整 JSON 備份檔');
+                };
+
+                const importJSON = (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const parsed = JSON.parse(evt.target.result);
+                            if (parsed.transactions && Array.isArray(parsed.transactions)) {
+                                transactions.value = parsed.transactions;
+                                if (parsed.budgets) categoryBudgets.value = parsed.budgets;
+                                if (parsed.appName) {
+                                    appName.value = parsed.appName;
+                                    localStorage.setItem('hk_budget_app_name', appName.value);
+                                }
+                                saveLocalData();
+                                localStorage.setItem('hk_budget_caps', JSON.stringify(categoryBudgets.value));
+                                showToast('成功恢復備份數據！');
+                            } else {
+                                alert('無效的備份檔案格式。');
+                            }
+                        } catch (err) {
+                            alert('讀取檔案失敗，請確保上傳有效的 JSON 檔案。');
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+
+                const loadSampleData = () => {
+                    if (confirm('載入範例數據將會補充目前紀錄，確定載入嗎？')) {
+                        transactions.value = [...sampleTransactions];
+                        saveLocalData();
+                        showToast('已載入香港日常記帳範例');
+                    }
+                };
+
+                const confirmClearAll = () => {
+                    if (confirm('警告：確定要清空所有記帳數據嗎？此動作不可逆！')) {
+                        transactions.value = [];
+                        saveLocalData();
+                        showToast('已清空所有數據');
+                    }
+                };
+
+                // Chart Render Logic
+                const renderCharts = () => {
+                    if (currentTab.value !== 'overview') return;
+
+                    // 1. Category Doughnut Chart
+                    const categoryCtx = document.getElementById('categoryChart');
+                    if (categoryCtx) {
+                        if (categoryChartInstance) categoryChartInstance.destroy();
+
+                        const catMap = {};
+                        expenseCategories.value.forEach(c => catMap[c.name] = 0);
+
+                        currentMonthTransactions.value.filter(t => t.type === 'expense').forEach(t => {
+                            catMap[t.category] = (catMap[t.category] || 0) + Number(t.amount);
+                        });
+
+                        const labels = Object.keys(catMap).filter(k => catMap[k] > 0);
+                        const data = labels.map(k => catMap[k]);
+
+                        categoryChartInstance = new Chart(categoryCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels.length > 0 ? labels : ['無數據'],
+                                datasets: [{
+                                    data: data.length > 0 ? data : [1],
+                                    backgroundColor: [
+                                        '#f97316', '#3b82f6', '#10b981', '#ec4899', 
+                                        '#f59e0b', '#f43f5e', '#6366f1', '#64748b'
+                                    ],
+                                    borderWidth: 2,
+                                    borderColor: isDark.value ? '#1e293b' : '#ffffff'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        position: 'bottom',
+                                        labels: {
+                                            color: isDark.value ? '#cbd5e1' : '#475569',
+                                            font: { size: 11, family: 'Inter' }
+                                        }
+                                    },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                const label = context.label || '';
+                                                const value = context.parsed || 0;
+                                                return ` ${label}: HK$${value.toLocaleString()}`;
+                                            }
+                                        }
+                                    }
+                                },
+                                cutout: '70%'
+                            }
+                        });
+                    }
+
+                    // 2. Trend Bar / Line Chart (Last 6 Months)
+                    const trendCtx = document.getElementById('trendChart');
+                    if (trendCtx) {
+                        if (trendChartInstance) trendChartInstance.destroy();
+
+                        const monthLabels = [];
+                        const incomeData = [];
+                        const expenseData = [];
+
+                        // Generate last 6 months list
+                        const [currY, currM] = selectedMonth.value.split('-').map(Number);
+                        for (let i = 5; i >= 0; i--) {
+                            const d = new Date(currY, currM - 1 - i, 1);
+                            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                            monthLabels.push(`${d.getMonth() + 1}月`);
+
+                            let incSum = 0;
+                            let expSum = 0;
+                            transactions.value.filter(t => t.date.startsWith(mKey)).forEach(t => {
+                                if (t.type === 'income') incSum += Number(t.amount);
+                                else expSum += Number(t.amount);
+                            });
+
+                            incomeData.push(incSum);
+                            expenseData.push(expSum);
+                        }
+
+                        trendChartInstance = new Chart(trendCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: monthLabels,
+                                datasets: [
+                                    {
+                                        label: '收入 (Income)',
+                                        data: incomeData,
+                                        backgroundColor: '#10b981',
+                                        borderRadius: 6
+                                    },
+                                    {
+                                        label: '支出 (Expense)',
+                                        data: expenseData,
+                                        backgroundColor: '#f43f5e',
+                                        borderRadius: 6
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: {
+                                        ticks: { color: isDark.value ? '#94a3b8' : '#64748b' },
+                                        grid: { display: false }
+                                    },
+                                    y: {
+                                        ticks: { color: isDark.value ? '#94a3b8' : '#64748b' },
+                                        grid: { color: isDark.value ? '#334155' : '#e2e8f0' }
+                                    }
+                                },
+                                plugins: {
+                                    legend: {
+                                        position: 'top',
+                                        labels: {
+                                            color: isDark.value ? '#cbd5e1' : '#475569',
+                                            font: { size: 11 }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                };
+
+                // Watchers & Lifecycle
+                watch([selectedMonth, transactions, currentTab], () => {
+                    nextTick(() => renderCharts());
+                }, { deep: true });
+
+                onMounted(() => {
+                    // Restore Custom App Name
+                    const savedAppName = localStorage.getItem('hk_budget_app_name');
+                    if (savedAppName) {
+                        appName.value = savedAppName;
+                    }
+
+                    // Restore Dark Mode
+                    if (localStorage.getItem('hk_budget_dark') === 'true') {
+                        isDark.value = true;
+                        document.documentElement.classList.add('dark');
+                    }
+
+                    // Restore Local Transactions
+                    const savedTrans = localStorage.getItem('hk_budget_transactions');
+                    if (savedTrans) {
+                        try {
+                            transactions.value = JSON.parse(savedTrans);
+                        } catch (e) {
+                            transactions.value = [...sampleTransactions];
+                        }
+                    } else {
+                        transactions.value = [...sampleTransactions];
+                        saveLocalData();
+                    }
+
+                    // Restore Budget Caps
+                    const savedCaps = localStorage.getItem('hk_budget_caps');
+                    if (savedCaps) {
+                        try {
+                            categoryBudgets.value = { ...categoryBudgets.value, ...JSON.parse(savedCaps) };
+                        } catch (e) {}
+                    }
+
+                    nextTick(() => renderCharts());
+                });
+
+                return {
+                    appName,
+                    isEditingAppName,
+                    tempAppName,
+                    appNameInputRef,
+                    startEditingAppName,
+                    saveAppName,
+                    cancelEditingAppName,
+                    currentTab,
+                    isDark,
+                    toastMsg,
+                    selectedMonth,
+                    expenseCategories,
+                    incomeCategories,
+                    hkAccountOptions,
+                    categoryBudgets,
+                    transactions,
+                    filterSearch,
+                    filterType,
+                    filterCategory,
+                    filterAccount,
+                    showModal,
+                    isEditing,
+                    form,
+                    showBudgetModal,
+                    budgetEditingCat,
+                    tempBudgetAmount,
+                    currentMonthTransactions,
+                    filteredTransactions,
+                    recentTransactions,
+                    monthlySummary,
+                    totalBudgetLimit,
+                    overallBudgetPercent,
+                    allCategoryNames,
+                    categoryChartEmpty,
+                    topExpenseCategory,
+                    topPaymentMethod,
+                    formatCurrency,
+                    getCategoryBg,
+                    getCategoryIcon,
+                    getCategoryExpense,
+                    getCategoryProgress,
+                    changeMonth,
+                    resetToCurrentMonth,
+                    resetFilters,
+                    toggleDarkMode,
+                    openAddModal,
+                    editTransaction,
+                    closeModal,
+                    saveTransaction,
+                    deleteTransaction,
+                    openBudgetEditModal,
+                    saveCategoryBudget,
+                    showTotalBudgetModal,
+                    tempTotalBudgetAmount,
+                    openTotalBudgetEditModal,
+                    saveTotalBudget,
+                    exportExcel,
+                    exportJSON,
+                    importJSON,
+                    loadSampleData,
+                    confirmClearAll
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
